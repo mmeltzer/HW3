@@ -1,3 +1,4 @@
+#ifndef RECORD_MGR_H
 #define RECORD_MGR_H
 
 #include "dberror.h"
