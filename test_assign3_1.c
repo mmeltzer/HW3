@@ -1,3 +1,5 @@
+#include <stdlib.h>
+
 #include "dberror.h"
 #include "expr.h"
 #include "record_mgr.h"
