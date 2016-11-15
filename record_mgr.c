@@ -6,15 +6,7 @@
 #include "record_mgr.h"
 #include "storage_mgr.h"
 #include "tables.h"
-#include "rm_serializer.c"
 
-typedef struct fileInfo{
-	BM_BufferPool *bm;
-	int data_start_page;
-	int data_end_page;
-	int free_space;
-
-}fileInfo;
 
 //table and manager
 RC initRecordManager(void *mgmtData){
@@ -38,21 +30,26 @@ RC createTable(char *name, Schema *schema){
 
 	//writes the table information to the first page
 	writeBlock(0, fileHandle, schema_metadata);
+	
+	//Need to write a free space directory on one or more pages
+	
+	
 	return 0;
 }
 
 RC openTable(RM_TableData *rel, char *name){
 
 	SM_FileHandle *fHandle=(SM_FileHandle *)malloc(sizeof(SM_FileHandle));
-	fileInfo *fInfo=(fileInfo *)malloc(sizeof(fileInfo));
 	BM_PageHandle *pHandle = (BM_PageHandle *)malloc(sizeof(BM_PageHandle));
 
 	openPageFile(name, fHandle);
-
+	
+	//read page 0 which contains the schema data
+	//this will also have to read the free space directory, but we do not know how many pages that will be
 	readBlock(0, fHandle, pHandle);
 
 	rel->name = name;
-	//Not sure if we need to, set rel->schema by reading the first page
+	//Not sure if we need to set rel->schema by reading the first page
 	//set rel->schema equal to serialized contents in page 0
 
 	return 0;
@@ -71,7 +68,6 @@ int getNumTuples (RM_TableData *rel){
 
 //handling records in a table
 RC insertRecord (RM_TableData *rel, Record *record){
-
 	return 0;
 }
 RC deleteRecord (RM_TableData *rel, RID id){
