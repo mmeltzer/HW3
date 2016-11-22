@@ -8,14 +8,6 @@
 #include "tables.h"
 #include "rm_serializer.c"
 
-typedef struct scanInfo{
-	int curPage;
-	int curSlot;
-	Expr *search_cond;
-
-}scanInfo;
-
-
 //table and manager
 RC initRecordManager(void *mgmtData){
 	initBufferPool();
@@ -32,11 +24,8 @@ RC shutdownRecordManager(){
 RC createTable (char *name, Schema *schema) {
 
 	FILE *file = fopen(name, "r");
-
 	rc = createPageFile(name);
-
 	rc = initBufferPool(bm, name, 3, RS_LRU, NULL);
-
 	rc = pinPage(bm, pageHandler, 0);
 
 	writeSchema(schema, pageHandler->data);
@@ -46,11 +35,8 @@ RC createTable (char *name, Schema *schema) {
 	memcpy(pageHandler->data + TUPLE_NUM_OFFSET, &tupleNum, sizeof(int));
 
 	rc = markDirty(bm, pageHandler);
-
 	rc = unpinPage(bm, pageHandler);
-
 	rc = forcePage(bm, pageHandler);
-
 	rc = shutdownBufferPool(bm);
 
 	return rc;
@@ -61,21 +47,16 @@ RC openTable (RM_TableData *rel, char *name) {
 	BM_BufferPool *bm = MAKE_POOL();
 
 	rc = initBufferPool(bm, name, PAGE_BUFFER_SIZE, RS_LRU, NULL);
-
 	rel->name = name;
 
 	RM_MgmtInfo *mgmtData = (RM_MgmtInfo *)malloc(sizeof(RM_MgmtInfo));
-
 	mgmtData->bm = bm;
 
 	rel->mgmtData = mgmtData;
-
 	rc = pinPage(bm, pageHandler, 0);
-
 	rel->schema = readSchema(pageHandler->data);
 
 	mgmtData->recordSize = getRecordSize(rel->schema);
-
 	mgmtData->pageSlots = PAGE_SIZE / mgmtData->recordSize;
 
 	memcpy(&mgmtData->tupleNum, pageHandler->data + TUPLE_NUM_OFFSET, sizeof(int));
@@ -85,25 +66,18 @@ RC openTable (RM_TableData *rel, char *name) {
 	if (keyConstrainEnabled) {
 
 		mgmtData->keyTableSize = 20000;
-
 		mgmtData->keyTable = (RM_ReordHashKey **)malloc(sizeof(RM_ReordHashKey *) * mgmtData->keyTableSize);
 		int i;
 
 		for (i = 0; i < mgmtData->keyTableSize; i++) {
-
 			mgmtData->keyTable[i] = NULL;
 		}
 
 		char *tmp = "._index_";
-
 		int len = strlen(name) + strlen(tmp) + 1;
-
 		mgmtData->indexFileName = (char*)calloc(len, sizeof(char));
-
 		strcpy(mgmtData->indexFileName, name);
-
 		strcat(mgmtData->indexFileName, tmp);
-
 	}
 
 	return rc;
@@ -112,14 +86,11 @@ RC openTable (RM_TableData *rel, char *name) {
 RC closeTable (RM_TableData *rel) {
 
 	RM_MgmtInfo *rmMgmtData = (RM_MgmtInfo *)rel->mgmtData;
-
 	BM_BufferPool *bm = (BM_BufferPool *)rmMgmtData->bm;
 
 	if (keyConstrainEnabled) {
 		writeIndex(rel);
-
 		int i;
-
 		RM_ReordHashKey *p1, *p2;;
 
 		for (i = 0; i < rmMgmtData->keyTableSize; i++) {
@@ -148,24 +119,6 @@ int getNumTuples (RM_TableData *rel){
 
 //handling records in a table
 RC insertRecord (RM_TableData *rel, Record *record){
-
-	BM_PageHandle *page = (BM_PageHandle *) malloc(sizeof(BM_PageHandle));
-	RM_MgmtInfo *mgmtData = (RM_MgmtInfo *)rel->mgmtData;
-
-	FILE *file = fopen(mgmtData->indexFileName, "r");
-
-	mgmtData->bm = bm;
-	rel->mgmtData = mgmtData;
-
-	int pageSlots = mgmtData->pageSlots;
-	int recordSize = mgmtData->recordSize;
-
-	strcpy(page, 0);
-	readBlock(1, *file, *page);
-
-	mgmtData->tupleNum++;
-
-
 	return 0;
 }
 RC deleteRecord (RM_TableData *rel, RID id){
@@ -180,13 +133,6 @@ RC getRecord (RM_TableData *rel, RID id, Record *record){
 
 //scans
 RC startScan (RM_TableData *rel, RM_ScanHandle *scan, Expr *cond){
-	scanInfo *sc = (scanInfo *)malloc(sizeof(scanInfo*));
-	scan->rel = rel;
-
-	sc->curPage = 1; //Adjust according to directory
-	sc->curSlot = 0;
-	sc->search_cond = cond;
-
 	return 0;
 }
 RC next (RM_ScanHandle *scan, Record *record){
@@ -200,24 +146,25 @@ RC closeScan (RM_ScanHandle *scan){
 int getRecordSize (Schema *schema){
 
 	int i, size = 0;
-		for (i = 0; i < schema->numAttr; i++) {
-			switch (schema->dataTypes[i]) {
-			case DT_FLOAT:
-				size += sizeof(float);
-				break;
-			case DT_BOOL:
-				size += sizeof(bool);
-				break;
-			case DT_INT:
-				size += sizeof(int);
-				break;
-			case DT_STRING:
-				size += schema->typeLength[i];
-				break;
-			default:
-				break;
-			}
+
+	for (i = 0; i < schema->numAttr; i++) {
+		switch (schema->dataTypes[i]) {
+		case DT_INT:
+			size += sizeof(int);
+			break;
+		case DT_FLOAT:
+			size += sizeof(float);
+			break;
+		case DT_BOOL:
+			size += sizeof(bool);
+			break;
+		case DT_STRING:
+			size += schema->typeLength[i];
+			break;
+		default:
+			break;
 		}
+	}
 
 		return size;
 }
@@ -267,13 +214,62 @@ RC getAttr (Record *record, Schema *schema, int attrNum, Value **value){
 	Value *v = (Value *) malloc(sizeof(Value));
 	int i; int offset = 0;
 
-	for(i=0: i<attrNum; i++){
-		offset += schema->typeLength[i];
+	for(i=0; i<attrNum; i++){
+		if(schema->dataTypes[i] == DT_STRING){
+			offset += (schema->typeLength[i] * sizeof(char));
+		}
+		else{
+			offset += sizeof(schema->dataTypes[i]);
+		}
 	}
 
+	switch(schema->dataTypes[attrNum]){
+		case DT_INT:{
+			memcpy(&(v->v.intV), &(record->data[offset]), sizeof(int));
+			break;
+		}
+		case DT_FLOAT:{
+			memcpy(&(v->v.floatV), &(record->data[offset]), sizeof(float));
+			break;
+		}
+		case DT_BOOL:{
+			memcpy(&(v->v.boolV), &(record->data[offset]), sizeof(bool));
+			break;
+		}
+		case DT_STRING:{
+			//Not sure how to do this case
+			break;
+		}
+	}
+	return 0;
 }
 
+
 RC setAttr (Record *record, Schema *schema, int attrNum, Value *value){
+	int i; int offset = 0;
+
+	for(i=0; i<attrNum; i++){
+		offset += sizeof(schema->dataTypes[i]);
+	}
+
+	switch(schema->dataTypes[attrNum]){
+		case DT_INT:{
+			memcpy(&(record->data[offset]), &value->v.intV, sizeof(int));
+			break;
+		}
+		case DT_FLOAT:{
+			memcpy(&(record->data[offset]), &value->v.floatV, sizeof(float));
+			break;
+		}
+		case DT_BOOL:{
+			memcpy(&(record->data[offset]), &value->v.boolV, sizeof(bool));
+			break;
+		}
+		case DT_STRING:{
+			//Not sure how to do this case
+			break;
+		}
+	}
 	return 0;
 }
 
