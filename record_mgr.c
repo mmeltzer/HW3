@@ -8,6 +8,24 @@
 #include "tables.h"
 #include "rm_serializer.c"
 
+typedef struct RM_RecordHashKey{
+	int next;
+	void *mgmtData;
+}RM_RecordHashKey
+
+typedef struct RM_MgmtInfo{
+	int recordSize;
+	int pageSlots;
+	int tupleNum;
+	RM_RecordHashKey *keyTable;
+	int keyTableSize;
+	char *indexFileName;
+	BM_BufferPool *bm;
+}RM_MgmtInfo
+
+int TUPLE_NUM_OFFSET = 0;
+int PAGE_BUFFER_SIZE = 4096;
+
 //table and manager
 RC initRecordManager(void *mgmtData){
 	initBufferPool();
@@ -18,25 +36,26 @@ RC shutdownRecordManager(){
 	return 0;
 }
 
-
-
 //need to store information about free space and schema on information page
 RC createTable (char *name, Schema *schema) {
 
 	FILE *file = fopen(name, "r");
+	BM_PageHandle *ph = (BM_PageHandle *)malloc(sizeof(BM_PageHandle));
+	BM_BufferPool *bm = (BM_BufferPool *)malloc(sizeof(BM_BufferPool));
+	RC rc;
 	rc = createPageFile(name);
 	rc = initBufferPool(bm, name, 3, RS_LRU, NULL);
-	rc = pinPage(bm, pageHandler, 0);
+	rc = pinPage(bm, ph, 0);
 
-	writeSchema(schema, pageHandler->data);
+	writeSchema(schema, ph->data);
 
 	int tupleNum = 0;
 
-	memcpy(pageHandler->data + TUPLE_NUM_OFFSET, &tupleNum, sizeof(int));
+	memcpy(ph->data + TUPLE_NUM_OFFSET, &tupleNum, sizeof(int));
 
-	rc = markDirty(bm, pageHandler);
-	rc = unpinPage(bm, pageHandler);
-	rc = forcePage(bm, pageHandler);
+	rc = markDirty(bm, ph);
+	rc = unpinPage(bm, ph);
+	rc = forcePage(bm, ph);
 	rc = shutdownBufferPool(bm);
 
 	return rc;
@@ -45,28 +64,32 @@ RC createTable (char *name, Schema *schema) {
 RC openTable (RM_TableData *rel, char *name) {
 
 	BM_BufferPool *bm = MAKE_POOL();
+	BM_PageHandle *ph = (BM_PageHandle *)malloc(sizeof(BM_PageHandle));
+	RC rc;
 
 	rc = initBufferPool(bm, name, PAGE_BUFFER_SIZE, RS_LRU, NULL);
 	rel->name = name;
 
 	RM_MgmtInfo *mgmtData = (RM_MgmtInfo *)malloc(sizeof(RM_MgmtInfo));
-	mgmtData->bm = bm;
+	mgmtData-> bm = bm;
 
 	rel->mgmtData = mgmtData;
-	rc = pinPage(bm, pageHandler, 0);
-	rel->schema = readSchema(pageHandler->data);
+	rc = pinPage(bm, ph, 0);
+	rel->schema = readSchema(ph->data);
 
 	mgmtData->recordSize = getRecordSize(rel->schema);
 	mgmtData->pageSlots = PAGE_SIZE / mgmtData->recordSize;
 
-	memcpy(&mgmtData->tupleNum, pageHandler->data + TUPLE_NUM_OFFSET, sizeof(int));
+	memcpy(&mgmtData->tupleNum, ph->data + TUPLE_NUM_OFFSET, sizeof(int));
 
-	rc = unpinPage(bm, pageHandler);
+	rc = unpinPage(bm, ph);
+
+	bool keyConstrainEnabled = 0;
 
 	if (keyConstrainEnabled) {
 
 		mgmtData->keyTableSize = 20000;
-		mgmtData->keyTable = (RM_ReordHashKey **)malloc(sizeof(RM_ReordHashKey *) * mgmtData->keyTableSize);
+		mgmtData->keyTable = (RM_RecordHashKey **)malloc(sizeof(RM_RecordHashKey *) * mgmtData->keyTableSize);
 		int i;
 
 		for (i = 0; i < mgmtData->keyTableSize; i++) {
@@ -88,10 +111,14 @@ RC closeTable (RM_TableData *rel) {
 	RM_MgmtInfo *rmMgmtData = (RM_MgmtInfo *)rel->mgmtData;
 	BM_BufferPool *bm = (BM_BufferPool *)rmMgmtData->bm;
 
+	RC rc;
+
+	bool keyConstrainEnabled = 0;
+
 	if (keyConstrainEnabled) {
 		writeIndex(rel);
 		int i;
-		RM_ReordHashKey *p1, *p2;;
+		RM_RecordHashKey *p1, *p2;;
 
 		for (i = 0; i < rmMgmtData->keyTableSize; i++) {
 			p1 = rmMgmtData->keyTable[i];
