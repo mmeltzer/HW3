@@ -126,7 +126,7 @@ RC createTable (char *name, Schema *schema) {
   DataType *dataTypes;
   int *typeLength;
   int *keyAttrs;
-  int keySize;
+  int keySize;ns
 } Schema;
 	*/
 
